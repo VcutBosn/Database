@@ -90,7 +90,7 @@ class Bot:
                 'csrfToken': csrf
             })
             if r.status_code == 200 and r.json().get('data', {}).get('user'):
-                print(f"✅ Login as @{CONFIG['username']}")
+                print(f"Login as @{CONFIG['username']}")
                 return True
             return False
         except:
@@ -151,7 +151,7 @@ class Bot:
 
 # ==================== MENU ====================
 def menu():
-    return """🔥 *MENU BOT* 🔥
+    return """🔥 MENU BOT 🔥
 
 /search - Chat random
 /chat @user - Chat custom
@@ -163,25 +163,21 @@ def menu():
 /report - Lapor partner
 /info - Info bot
 
-[🔍 SEARCH] [💬 CHAT] [👤 FOLLOW]
-[❤️ LIKE] [📊 INFO] [❓ HELP]"""
+[SEARCH] [CHAT] [FOLLOW]
+[LIKE] [INFO] [HELP]"""
 
 # ==================== HANDLE ====================
 def handle(bot, sender, uid, text):
     cmd = text.lower().strip()
     
-    # Block check
     if bot.db.is_blocked(uid):
         return
     
-    # Register
     bot.db.add_user(uid, sender)
     
-    # Menu
     if cmd in ['/menu', '/help', '/start']:
         bot.send(sender, menu())
     
-    # SEARCH
     elif cmd == '/search':
         if bot.waiting:
             partner = bot.waiting.pop(0)
@@ -189,51 +185,46 @@ def handle(bot, sender, uid, text):
             bot.db.create_chat(cid, uid, partner)
             bot.chats[uid] = partner
             bot.chats[partner] = uid
-            bot.send(sender, "🌟 Partner ditemukan!")
+            bot.send(sender, "Partner ditemukan!")
             pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
             if pname:
-                bot.send(pname[0], "🌟 Partner ditemukan!")
+                bot.send(pname[0], "Partner ditemukan!")
         else:
             bot.waiting.append(uid)
-            bot.send(sender, "🔵 Mencari partner...")
+            bot.send(sender, "Mencari partner...")
     
-    # CHAT CUSTOM
     elif cmd.startswith('/chat @'):
         target = cmd.replace('/chat @', '').strip()
         if not target:
-            bot.send(sender, "❌ Format: /chat @username")
+            bot.send(sender, "Format: /chat @username")
             return
         cid = hashlib.md5(f"{uid}{target}{time.time()}".encode()).hexdigest()[:16]
         bot.db.create_chat(cid, uid, target)
         bot.chats[uid] = target
-        bot.send(sender, f"💬 Chat dengan @{target} dimulai.")
-        bot.send(target, f"💬 @{sender} chat denganmu.")
+        bot.send(sender, f"Chat dengan @{target} dimulai.")
+        bot.send(target, f"@{sender} chat denganmu.")
     
-    # FOLLOW
     elif cmd.startswith('/follow @'):
         target = cmd.replace('/follow @', '').strip()
         if bot.follow(target):
-            bot.send(sender, f"✅ Follow @{target}")
+            bot.send(sender, f"Follow @{target} sukses")
         else:
-            bot.send(sender, "❌ Gagal follow")
+            bot.send(sender, "Gagal follow")
     
-    # UNFOLLOW
     elif cmd.startswith('/unfollow @'):
         target = cmd.replace('/unfollow @', '').strip()
         if bot.unfollow(target):
-            bot.send(sender, f"✅ Unfollow @{target}")
+            bot.send(sender, f"Unfollow @{target} sukses")
         else:
-            bot.send(sender, "❌ Gagal unfollow")
+            bot.send(sender, "Gagal unfollow")
     
-    # LIKE
     elif cmd.startswith('/like'):
         url = cmd.replace('/like', '').strip()
         if bot.like(url):
-            bot.send(sender, "✅ Like sukses")
+            bot.send(sender, "Like sukses")
         else:
-            bot.send(sender, "❌ Gagal like")
+            bot.send(sender, "Gagal like")
     
-    # NEXT
     elif cmd == '/next':
         if uid in bot.chats:
             partner = bot.chats[uid]
@@ -246,9 +237,8 @@ def handle(bot, sender, uid, text):
             del bot.chats[uid]
             if uid in bot.waiting:
                 bot.waiting.remove(uid)
-            bot.send(sender, "🔵 Keluar chat.")
+            bot.send(sender, "Keluar chat.")
     
-    # END
     elif cmd == '/end':
         if uid in bot.chats:
             partner = bot.chats[uid]
@@ -259,29 +249,27 @@ def handle(bot, sender, uid, text):
             if partner in bot.chats:
                 pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
                 if pname:
-                    bot.send(pname[0], "🔵 Partner mengakhiri chat.")
+                    bot.send(pname[0], "Partner mengakhiri chat.")
                 del bot.chats[partner]
             del bot.chats[uid]
             if uid in bot.waiting:
                 bot.waiting.remove(uid)
-            bot.send(sender, "👋 Chat diakhiri.")
+            bot.send(sender, "Chat diakhiri.")
     
-    # REPORT
     elif cmd == '/report':
         if uid in bot.chats:
             partner = bot.chats[uid]
             bot.reports[partner] = bot.reports.get(partner, 0) + 1
             if bot.reports[partner] >= 3:
                 bot.db.block(partner)
-                bot.send(sender, "✅ Partner diblokir.")
+                bot.send(sender, "Partner diblokir.")
             else:
-                bot.send(sender, f"✅ Laporan terkirim ({bot.reports[partner]}/3)")
+                bot.send(sender, f"Laporan terkirim ({bot.reports[partner]}/3)")
         else:
-            bot.send(sender, "❌ Tidak ada partner.")
+            bot.send(sender, "Tidak ada partner.")
     
-    # INFO
     elif cmd == '/info':
-        info = f"""📊 INFO BOT
+        info = f"""INFO BOT
 Owner: RAJU
 Users: {len(bot.db.c.execute('SELECT * FROM users').fetchall())}
 Active: {len(bot.chats)}
@@ -289,8 +277,47 @@ Waiting: {len(bot.waiting)}
 Status: ONLINE"""
         bot.send(sender, info)
     
-    # SEND KE PARTNER
     else:
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            if isinstance(partner, str) and not partner.startswith('@'):
+                pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
+                if pname:
+                    bot.send(pname[0], f"{sender}: {text}")
+            else:
+                bot.send(partner, f"{sender}: {text}")
+        else:
+            bot.send(sender, "Tidak ada partner. /search")
+
+# ==================== MAIN ====================
+def main():
+    bot = Bot()
+    if not bot.login():
+        print("Login gagal!")
+        return
+    
+    print(f"Bot running as @{CONFIG['username']}")
+    print("="*50)
+    print(menu())
+    print("="*50)
+    
+    while True:
+        try:
+            msgs = bot.get_inbox()
+            for msg in msgs:
+                if msg['sender'] == CONFIG['username']:
+                    continue
+                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
+                handle(bot, msg['sender'], uid, msg['text'])
+            time.sleep(3)
+        except KeyboardInterrupt:
+            print("\nStopped")
+            break
+        except:
+            time.sleep(5)
+
+if __name__ == "__main__":
+    main()else:
         if uid in bot.chats:
             partner = bot.chats[uid]
             if isinstance(partner, str) and not partner.startswith('@'):
