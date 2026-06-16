@@ -1,295 +1,333 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import time
-import random
-import threading
+import os
 import sys
 import json
-import os
+import time
+import random
+import hashlib
+import threading
+import requests
+import re
+import sqlite3
 from datetime import datetime
 
-# ===== KONFIGURASI =====
-USERNAME = ""  # Isi nanti
-PASSWORD = ""  # Isi nanti
-VERSION = "2.0"
+# ==================== KONFIG ====================
+CONFIG = {
+    "email": "toyaparkerreal2982@gmail.com",
+    "password": "yayaaja123_.",
+    "username": "iyanlagibobo1"
+}
 
-# ===== CLASS UTAMA =====
-class TikTokBot:
+# ==================== DATABASE ====================
+class Database:
     def __init__(self):
-        self.search_queue = []
-        self.active_chats = {}
-        self.confess_data = {}
-        self.processed_msgs = set()
-        self.running = True
-        
-        # Inisialisasi API
-        self.init_api()
-        
-    def init_api(self):
-        """Inisialisasi TikTok API"""
+        self.conn = sqlite3.connect('bot.db')
+        self.c = self.conn.cursor()
+        self.c.execute('''CREATE TABLE IF NOT EXISTS users
+                         (id TEXT, username TEXT, blocked INTEGER DEFAULT 0)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS chats
+                         (id TEXT, user1 TEXT, user2 TEXT)''')
+        self.conn.commit()
+    
+    def add_user(self, uid, username):
+        self.c.execute('INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)', (uid, username))
+        self.conn.commit()
+    
+    def is_blocked(self, uid):
+        self.c.execute('SELECT blocked FROM users WHERE id = ?', (uid,))
+        r = self.c.fetchone()
+        return r and r[0] == 1
+    
+    def block(self, uid):
+        self.c.execute('UPDATE users SET blocked = 1 WHERE id = ?', (uid,))
+        self.conn.commit()
+    
+    def create_chat(self, cid, u1, u2):
+        self.c.execute('INSERT INTO chats (id, user1, user2) VALUES (?, ?, ?)', (cid, u1, u2))
+        self.conn.commit()
+    
+    def delete_chat(self, cid):
+        self.c.execute('DELETE FROM chats WHERE id = ?', (cid,))
+        self.conn.commit()
+    
+    def get_partner(self, uid):
+        self.c.execute('SELECT id, user1, user2 FROM chats WHERE user1 = ? OR user2 = ?', (uid, uid))
+        r = self.c.fetchone()
+        if r:
+            return r[1] if r[1] != uid else r[2]
+        return None
+
+# ==================== BOT ====================
+class Bot:
+    def __init__(self):
+        self.db = Database()
+        self.s = requests.Session()
+        self.s.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        })
+        self.waiting = []
+        self.chats = {}
+        self.reports = {}
+    
+    def login(self):
         try:
-            from TikTokApi import TikTokApi
-            self.api = TikTokApi()
-            print("[✓] TikTok API loaded")
-        except ImportError:
-            print("[✗] TikTokApi not installed. Run: pip install TikTokApi")
-            sys.exit(1)
+            r = self.s.get('https://www.tiktok.com/')
+            csrf = None
+            for c in self.s.cookies:
+                if c.name == 'csrfToken':
+                    csrf = c.value
+                    break
+            if not csrf:
+                csrf = re.search(r'csrfToken:\s*"([^"]+)"', r.text)
+                csrf = csrf.group(1) if csrf else ''
             
-    def login(self, username, password):
-        """Login ke TikTok"""
-        self.username = username
-        self.password = password
-        print(f"[BOT] Logging in as @{username}...")
-        
-        try:
-            self.api.login(username=username, password=password)
-            self.user_id = self.api.get_user_id(username)
-            print(f"[BOT] ✅ Login success! ID: {self.user_id}")
-            return True
-        except Exception as e:
-            print(f"[BOT] ❌ Login failed: {e}")
+            r = self.s.post('https://www.tiktok.com/api/v1/auth/login', json={
+                'email': CONFIG['email'],
+                'password': CONFIG['password'],
+                'csrfToken': csrf
+            })
+            if r.status_code == 200 and r.json().get('data', {}).get('user'):
+                print(f"✅ Login as @{CONFIG['username']}")
+                return True
+            return False
+        except:
             return False
     
-    def get_dms(self):
-        """Ambil DM masuk"""
+    def send(self, target, msg):
         try:
-            inbox = self.api.get_inbox()
-            messages = []
-            for thread in inbox.get('threads', []):
-                for msg in thread.get('messages', []):
-                    if msg.get('type') == 'text':
-                        messages.append({
-                            'from_id': msg.get('from_user_id'),
-                            'username': msg.get('from_user_name'),
-                            'text': msg.get('text', ''),
-                            'time': msg.get('create_time'),
-                            'thread_id': thread.get('thread_id')
-                        })
-            return messages
-        except Exception as e:
-            print(f"[!] Error getting DMs: {e}")
+            r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
+            uid = r.json().get('data', {}).get('user', {}).get('id')
+            if not uid:
+                return False
+            r = self.s.post('https://www.tiktok.com/api/v1/message/send', json={
+                'recipient_id': uid,
+                'text': msg,
+                'type': 'text'
+            })
+            return r.status_code == 200
+        except:
+            return False
+    
+    def get_inbox(self):
+        try:
+            r = self.s.get('https://www.tiktok.com/api/v1/inbox/list', params={'limit': 20})
+            msgs = r.json().get('data', {}).get('messages', [])
+            return [{'sender': m.get('sender', {}).get('unique_id', ''), 'text': m.get('text', '')} for m in msgs if m.get('sender', {}).get('unique_id')]
+        except:
             return []
     
-    def send_dm(self, user_id, message):
-        """Kirim DM"""
+    def follow(self, target):
         try:
-            self.api.send_message(user_id, message)
-            return True
-        except Exception as e:
-            print(f"[!] Error sending DM: {e}")
+            r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
+            uid = r.json().get('data', {}).get('user', {}).get('id')
+            if not uid:
+                return False
+            r = self.s.post('https://www.tiktok.com/api/v1/follow/', json={'user_id': uid})
+            return r.status_code == 200
+        except:
             return False
     
-    def get_user_id(self, username):
-        """Cari user ID dari username"""
+    def unfollow(self, target):
         try:
-            info = self.api.get_user_info(username)
-            return info.get('user_id')
+            r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
+            uid = r.json().get('data', {}).get('user', {}).get('id')
+            if not uid:
+                return False
+            r = self.s.post('https://www.tiktok.com/api/v1/unfollow/', json={'user_id': uid})
+            return r.status_code == 200
         except:
-            return None
+            return False
     
-    def handle_search(self, sender, sender_id):
-        """Fitur /search - Cari partner random"""
-        if sender in self.search_queue:
-            self.send_dm(sender_id, "⏳ Kamu sudah di antrian. Tunggu ya!")
-            return
-        
-        self.search_queue.append(sender)
-        
-        if len(self.search_queue) >= 2:
-            user1 = self.search_queue.pop(0)
-            user2 = self.search_queue.pop(0)
-            id1 = self.get_user_id(user1)
-            id2 = self.get_user_id(user2)
-            
-            if id1 and id2:
-                self.active_chats[user1] = user2
-                self.active_chats[user2] = user1
-                
-                self.send_dm(id1, f"🔵 Partner ditemukan! @{user2}\nKetik /end untuk keluar")
-                self.send_dm(id2, f"🔵 Partner ditemukan! @{user1}\nKetik /end untuk keluar")
-                print(f"[✓] Match: @{user1} <-> @{user2}")
+    def like(self, url):
+        try:
+            vid = re.search(r'/video/(\d+)', url).group(1)
+            r = self.s.post('https://www.tiktok.com/api/v1/like/', json={'video_id': vid})
+            return r.status_code == 200
+        except:
+            return False
+
+# ==================== MENU ====================
+def menu():
+    return """🔥 *MENU BOT* 🔥
+
+/search - Chat random
+/chat @user - Chat custom
+/follow @user - Follow
+/unfollow @user - Unfollow
+/like <url> - Like video
+/next - Ganti partner
+/end - Keluar chat
+/report - Lapor partner
+/info - Info bot
+
+[🔍 SEARCH] [💬 CHAT] [👤 FOLLOW]
+[❤️ LIKE] [📊 INFO] [❓ HELP]"""
+
+# ==================== HANDLE ====================
+def handle(bot, sender, uid, text):
+    cmd = text.lower().strip()
+    
+    # Block check
+    if bot.db.is_blocked(uid):
+        return
+    
+    # Register
+    bot.db.add_user(uid, sender)
+    
+    # Menu
+    if cmd in ['/menu', '/help', '/start']:
+        bot.send(sender, menu())
+    
+    # SEARCH
+    elif cmd == '/search':
+        if bot.waiting:
+            partner = bot.waiting.pop(0)
+            cid = hashlib.md5(f"{uid}{partner}{time.time()}".encode()).hexdigest()[:16]
+            bot.db.create_chat(cid, uid, partner)
+            bot.chats[uid] = partner
+            bot.chats[partner] = uid
+            bot.send(sender, "🌟 Partner ditemukan!")
+            pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
+            if pname:
+                bot.send(pname[0], "🌟 Partner ditemukan!")
         else:
-            self.send_dm(sender_id, "🔵 Mencari partner... Mohon tunggu!")
+            bot.waiting.append(uid)
+            bot.send(sender, "🔵 Mencari partner...")
     
-    def handle_confess(self, sender, sender_id, target):
-        """Fitur /confes @user - Kirim pesan rahasia"""
-        target = target.strip().replace('@', '')
-        target_id = self.get_user_id(target)
-        
-        if not target_id:
-            self.send_dm(sender_id, f"⚠️ User @{target} tidak ditemukan!")
+    # CHAT CUSTOM
+    elif cmd.startswith('/chat @'):
+        target = cmd.replace('/chat @', '').strip()
+        if not target:
+            bot.send(sender, "❌ Format: /chat @username")
             return
-        
-        if target_id == sender_id:
-            self.send_dm(sender_id, "⚠️ Gak bisa confes diri sendiri!")
-            return
-        
-        self.confess_data[sender] = target
-        
-        self.send_dm(target_id, 
-            f"🔮 Ada seseorang yang ingin mengirim pesan rahasia ke kamu.\n"
-            f"Balas pesan ini untuk membalasnya (anonim).\n"
-            f"Ketik /block untuk menolak.")
-        
-        self.send_dm(sender_id, 
-            f"✅ Pesan confes terkirim ke @{target}!\nTunggu balasan.")
-        print(f"[✓] Confess: @{sender} -> @{target}")
+        cid = hashlib.md5(f"{uid}{target}{time.time()}".encode()).hexdigest()[:16]
+        bot.db.create_chat(cid, uid, target)
+        bot.chats[uid] = target
+        bot.send(sender, f"💬 Chat dengan @{target} dimulai.")
+        bot.send(target, f"💬 @{sender} chat denganmu.")
     
-    def handle_bug(self, sender_id, target):
-        """Fitur /bug @user - Crash akun target"""
-        target = target.strip().replace('@', '')
-        target_id = self.get_user_id(target)
-        
-        if not target_id:
-            self.send_dm(sender_id, f"⚠️ User @{target} tidak ditemukan!")
-            return
-        
-        self.send_dm(sender_id, f"🔥 Memulai bug attack ke @{target}...")
-        print(f"[🔥] Bug attack started on @{target}")
-        
-        # Jalankan di thread terpisah
-        threading.Thread(target=self.bug_attack, args=(target_id, target, sender_id)).start()
+    # FOLLOW
+    elif cmd.startswith('/follow @'):
+        target = cmd.replace('/follow @', '').strip()
+        if bot.follow(target):
+            bot.send(sender, f"✅ Follow @{target}")
+        else:
+            bot.send(sender, "❌ Gagal follow")
     
-    def bug_attack(self, target_id, target_name, sender_id):
-        """Eksekusi bug attack"""
-        print(f"[BUG] Attacking @{target_name}")
-        
-        # 1. Spam DM
-        for i in range(1000):
-            try:
-                self.api.send_message(target_id, f"💥" * random.randint(50, 200))
-                time.sleep(0.01)
-            except:
-                pass
-            if i % 50 == 0:
-                self.send_dm(sender_id, f"🔥 Progress: {i+1}/1000")
-        
-        # 2. Follow spam
+    # UNFOLLOW
+    elif cmd.startswith('/unfollow @'):
+        target = cmd.replace('/unfollow @', '').strip()
+        if bot.unfollow(target):
+            bot.send(sender, f"✅ Unfollow @{target}")
+        else:
+            bot.send(sender, "❌ Gagal unfollow")
+    
+    # LIKE
+    elif cmd.startswith('/like'):
+        url = cmd.replace('/like', '').strip()
+        if bot.like(url):
+            bot.send(sender, "✅ Like sukses")
+        else:
+            bot.send(sender, "❌ Gagal like")
+    
+    # NEXT
+    elif cmd == '/next':
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            cid = bot.db.c.execute('SELECT id FROM chats WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)', 
+                                   (uid, partner, partner, uid)).fetchone()
+            if cid:
+                bot.db.delete_chat(cid[0])
+            if partner in bot.chats:
+                del bot.chats[partner]
+            del bot.chats[uid]
+            if uid in bot.waiting:
+                bot.waiting.remove(uid)
+            bot.send(sender, "🔵 Keluar chat.")
+    
+    # END
+    elif cmd == '/end':
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            cid = bot.db.c.execute('SELECT id FROM chats WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)',
+                                   (uid, partner, partner, uid)).fetchone()
+            if cid:
+                bot.db.delete_chat(cid[0])
+            if partner in bot.chats:
+                pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
+                if pname:
+                    bot.send(pname[0], "🔵 Partner mengakhiri chat.")
+                del bot.chats[partner]
+            del bot.chats[uid]
+            if uid in bot.waiting:
+                bot.waiting.remove(uid)
+            bot.send(sender, "👋 Chat diakhiri.")
+    
+    # REPORT
+    elif cmd == '/report':
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            bot.reports[partner] = bot.reports.get(partner, 0) + 1
+            if bot.reports[partner] >= 3:
+                bot.db.block(partner)
+                bot.send(sender, "✅ Partner diblokir.")
+            else:
+                bot.send(sender, f"✅ Laporan terkirim ({bot.reports[partner]}/3)")
+        else:
+            bot.send(sender, "❌ Tidak ada partner.")
+    
+    # INFO
+    elif cmd == '/info':
+        info = f"""📊 INFO BOT
+Owner: RAJU
+Users: {len(bot.db.c.execute('SELECT * FROM users').fetchall())}
+Active: {len(bot.chats)}
+Waiting: {len(bot.waiting)}
+Status: ONLINE"""
+        bot.send(sender, info)
+    
+    # SEND KE PARTNER
+    else:
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            if isinstance(partner, str) and not partner.startswith('@'):
+                pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
+                if pname:
+                    bot.send(pname[0], f"💬 {sender}: {text}")
+            else:
+                bot.send(partner, f"💬 {sender}: {text}")
+        else:
+            bot.send(sender, "❌ Tidak ada partner. /search")
+
+# ==================== MAIN ====================
+def main():
+    bot = Bot()
+    if not bot.login():
+        print("❌ Login gagal!")
+        return
+    
+    print(f"✅ Bot running as @{CONFIG['username']}")
+    
+    while True:
         try:
-            for i in range(500):
-                self.api.follow_user(target_id)
-                time.sleep(0.02)
+            msgs = bot.get_inbox()
+            for msg in msgs:
+                if msg['sender'] == CONFIG['username']:
+                    continue
+                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
+                handle(bot, msg['sender'], uid, msg['text'])
+            time.sleep(3)
+        except KeyboardInterrupt:
+            print("\n❌ Stopped")
+            break
         except:
-            pass
-        
-        # 3. Report spam
-        try:
-            for i in range(100):
-                self.api.report_user(target_id, "spam")
-                time.sleep(0.1)
-        except:
-            pass
-        
-        self.send_dm(sender_id, f"✅ Bug attack selesai ke @{target_name}")
-        print(f"[✓] Bug attack completed on @{target_name}")
-    
-    def process_command(self, msg):
-        """Proses perintah dari DM"""
-        text = msg['text'].strip()
-        sender = msg['username']
-        sender_id = msg['from_id']
-        msg_id = f"{sender_id}_{msg['time']}"
-        
-        # Cegah duplikat
-        if msg_id in self.processed_msgs:
-            return
-        self.processed_msgs.add(msg_id)
-        
-        # ===== COMMAND HANDLER =====
-        
-        # /search
-        if text.lower() == '/search':
-            self.handle_search(sender, sender_id)
-            return
-        
-        # /confes @user
-        if text.lower().startswith('/confes'):
-            parts = text.split(' ', 1)
-            if len(parts) < 2:
-                self.send_dm(sender_id, "⚠️ Format: /confes @username")
-                return
-            self.handle_confess(sender, sender_id, parts[1])
-            return
-        
-        # /information
-        if text.lower() == '/information':
-            info = f"""
-📊 INFORMASI BOT
-━━━━━━━━━━━━━━━━
-👤 Username: @{sender}
-🆔 User ID: {sender_id}
-📅 Waktu: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-📌 Version: {VERSION}
-━━━━━━━━━━━━━━━━
-🔹 /search - Cari partner random
-🔹 /confes @user - Kirim pesan rahasia
-🔹 /information - Info ini
-🔹 /bug @user - [EXTREME]
-━━━━━━━━━━━━━━━━
-"""
-            self.send_dm(sender_id, info)
-            return
-        
-        # /bug @user
-        if text.lower().startswith('/bug'):
-            parts = text.split(' ', 1)
-            if len(parts) < 2:
-                self.send_dm(sender_id, "⚠️ Format: /bug @username")
-                return
-            self.handle_bug(sender_id, parts[1])
-            return
-        
-        # ===== CHAT AKTIF =====
-        if sender in self.active_chats:
-            partner = self.active_chats[sender]
-            partner_id = self.get_user_id(partner)
-            
-            if partner_id:
-                if text.lower() == '/end':
-                    self.send_dm(sender_id, "👋 Chat ended. Ketik /search untuk mulai lagi")
-                    self.send_dm(partner_id, "👋 Partner meninggalkan chat.")
-                    del self.active_chats[sender]
-                    del self.active_chats[partner]
-                else:
-                    self.send_dm(partner_id, f"💬 {sender}: {text}")
-            return
-        
-        # ===== CONFESS REPLY =====
-        for pengirim, penerima in self.confess_data.items():
-            if sender == penerima:
-                pengirim_id = self.get_user_id(pengirim)
-                if pengirim_id:
-                    if text.lower() == '/block':
-                        self.send_dm(sender_id, "🔒 Kamu memblokir pesan confes.")
-                        self.send_dm(pengirim_id, "❌ Target menolak pesanmu.")
-                        del self.confess_data[pengirim]
-                    else:
-                        self.send_dm(pengirim_id, f"📨 Balasan dari {sender}: {text}")
-                        self.send_dm(sender_id, "✅ Pesan terkirim!")
-                return
-        
-        # ===== DEFAULT =====
-        self.send_dm(sender_id, 
-            "❓ Perintah tidak dikenal.\n"
-            "Gunakan:\n"
-            "/search - Cari partner random\n"
-            "/confes @user - Kirim pesan rahasia\n"
-            "/information - Info bot\n"
-            "/bug @user - [EXTREME]")
-    
-    def run(self):
-        """Main loop"""
-        print("\n" + "="*50)
-        print("🤖 TIKTOK BOT v{}".format(VERSION))
-        print("="*50)
-        print(f"📱 Logged in as: @{self.username}")
-        print("\nSistem berjalan di background...")
-        print("Fitur aktif:")
-        print("  ✅ /search - Chat random")
-        print("  ✅ /confes @user - Chat custom")
-        print("  ✅ /information - Info bot")
-        print("  ✅ /bug @user - Crash user")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    main()  ✅ /bug @user - Crash user")
         print("="*50 + "\n")
         print("[BOT] Menunggu DM...")
         
