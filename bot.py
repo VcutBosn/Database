@@ -151,7 +151,7 @@ class Bot:
 
 # ==================== MENU ====================
 def menu():
-    return """🔥 MENU BOT 🔥
+    return """MENU BOT
 
 /search - Chat random
 /chat @user - Chat custom
@@ -317,6 +317,42 @@ def main():
             time.sleep(5)
 
 if __name__ == "__main__":
+    main()er,)).fetchone()
+                if pname:
+                    bot.send(pname[0], f"{sender}: {text}")
+            else:
+                bot.send(partner, f"{sender}: {text}")
+        else:
+            bot.send(sender, "Tidak ada partner. /search")
+
+# ==================== MAIN ====================
+def main():
+    bot = Bot()
+    if not bot.login():
+        print("Login gagal!")
+        return
+    
+    print(f"Bot running as @{CONFIG['username']}")
+    print("="*50)
+    print(menu())
+    print("="*50)
+    
+    while True:
+        try:
+            msgs = bot.get_inbox()
+            for msg in msgs:
+                if msg['sender'] == CONFIG['username']:
+                    continue
+                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
+                handle(bot, msg['sender'], uid, msg['text'])
+            time.sleep(3)
+        except KeyboardInterrupt:
+            print("\nStopped")
+            break
+        except:
+            time.sleep(5)
+
+if __name__ == "__main__":
     main()else:
         if uid in bot.chats:
             partner = bot.chats[uid]
@@ -376,7 +412,7 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     print("╔══════════════════════════════════════════════════╗")
     print("║     TIKTOK BOT - TERMUX EDITION                ║")
-    print("║          OWNER: RAJU                            ║")
+    print("║          OWNER: TOYA                            ║")
     print("╚══════════════════════════════════════════════════╝")
     
     bot = TikTokBot()
