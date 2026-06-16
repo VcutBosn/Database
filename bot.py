@@ -9,9 +9,9 @@ import sqlite3
 
 # ==================== KONFIG ====================
 CONFIG = {
-    "email": "email_bot_anda@gmail.com",
-    "password": "password_bot_anda",
-    "username": "username_bot_anda"
+    "email": "toyaparkerreal2982@gmail.com",
+    "password": "yayaaja123_.",
+    "username": "iyanlagibobo1"
 }
 
 # ==================== USER-AGENT ROTASI ====================
