@@ -1,34 +1,37 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import os
-import sys
+import requests
 import json
 import time
 import random
 import hashlib
-import threading
-import requests
 import re
 import sqlite3
-from datetime import datetime
 
 # ==================== KONFIG ====================
 CONFIG = {
-    "email": "toyaparkerreal2982@gmail.com",
-    "password": "yayaaja123_.",
-    "username": "iyanlagibobo1"
+    "email": "email_bot_anda@gmail.com",
+    "password": "password_bot_anda",
+    "username": "username_bot_anda"
 }
+
+# ==================== USER-AGENT ROTASI ====================
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+]
+
+def random_delay():
+    time.sleep(random.uniform(1, 3))
 
 # ==================== DATABASE ====================
 class Database:
     def __init__(self):
         self.conn = sqlite3.connect('bot.db')
         self.c = self.conn.cursor()
-        self.c.execute('''CREATE TABLE IF NOT EXISTS users
-                         (id TEXT, username TEXT, blocked INTEGER DEFAULT 0)''')
-        self.c.execute('''CREATE TABLE IF NOT EXISTS chats
-                         (id TEXT, user1 TEXT, user2 TEXT)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS users (id TEXT, username TEXT, blocked INTEGER DEFAULT 0)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS chats (id TEXT, user1 TEXT, user2 TEXT)''')
         self.conn.commit()
     
     def add_user(self, uid, username):
@@ -51,13 +54,6 @@ class Database:
     def delete_chat(self, cid):
         self.c.execute('DELETE FROM chats WHERE id = ?', (cid,))
         self.conn.commit()
-    
-    def get_partner(self, uid):
-        self.c.execute('SELECT id, user1, user2 FROM chats WHERE user1 = ? OR user2 = ?', (uid, uid))
-        r = self.c.fetchone()
-        if r:
-            return r[1] if r[1] != uid else r[2]
-        return None
 
 # ==================== BOT ====================
 class Bot:
@@ -65,16 +61,21 @@ class Bot:
         self.db = Database()
         self.s = requests.Session()
         self.s.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Accept-Language': 'id-ID,id;q=0.9',
-            'Content-Type': 'application/json'
+            'User-Agent': random.choice(USER_AGENTS),
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'id-ID,id;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Content-Type': 'application/json',
+            'Origin': 'https://www.tiktok.com',
+            'Referer': 'https://www.tiktok.com/',
+            'Connection': 'keep-alive'
         })
         self.waiting = []
         self.chats = {}
         self.reports = {}
     
     def login(self):
+        random_delay()
         try:
             r = self.s.get('https://www.tiktok.com/')
             csrf = None
@@ -100,6 +101,7 @@ class Bot:
             return False
     
     def send(self, target, msg):
+        random_delay()
         try:
             r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
             uid = r.json().get('data', {}).get('user', {}).get('id')
@@ -115,6 +117,7 @@ class Bot:
             return False
     
     def get_inbox(self):
+        random_delay()
         try:
             r = self.s.get('https://www.tiktok.com/api/v1/inbox/list', params={'limit': 20})
             msgs = r.json().get('data', {}).get('messages', [])
@@ -129,6 +132,7 @@ class Bot:
             return []
     
     def follow(self, target):
+        random_delay()
         try:
             r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
             uid = r.json().get('data', {}).get('user', {}).get('id')
@@ -140,6 +144,7 @@ class Bot:
             return False
     
     def unfollow(self, target):
+        random_delay()
         try:
             r = self.s.get('https://www.tiktok.com/api/v1/user/detail/', params={'username': target})
             uid = r.json().get('data', {}).get('user', {}).get('id')
@@ -151,6 +156,7 @@ class Bot:
             return False
     
     def like(self, url):
+        random_delay()
         try:
             match = re.search(r'/video/(\d+)', url)
             if not match:
@@ -161,23 +167,19 @@ class Bot:
         except:
             return False
 
-# ==================== MENU DENGAN BUTTON ====================
+# ==================== MENU ====================
 def menu():
-    return """🔥 MENU BOT 🔥
+    return """🔥 TIKTOK BOT 🔥
 
-[SEARCH] - Chat random
-[CHAT] - Chat custom
-[FOLLOW] - Follow user
-[UNFOLLOW] - Unfollow user
-[LIKE] - Like video
-[NEXT] - Ganti partner
-[END] - Keluar chat
-[REPORT] - Lapor partner
-[INFO] - Info bot
-
-━━━━━━━━━━━━━━━━━━━
-🔍 SEARCH | 💬 CHAT | 👤 FOLLOW
-❤️ LIKE | 📊 INFO | ❓ HELP"""
+/search - Chat random
+/chat @user - Chat custom
+/follow @user - Follow
+/unfollow @user - Unfollow
+/like <url> - Like video
+/next - Ganti partner
+/end - Keluar chat
+/report - Lapor partner
+/info - Info bot"""
 
 # ==================== HANDLE ====================
 def handle(bot, sender, uid, text):
@@ -277,11 +279,61 @@ def handle(bot, sender, uid, text):
                 bot.db.block(partner)
                 bot.send(sender, "Partner diblokir.")
             else:
-                bot.send(sender, f"Laporan terkirim ({bot.reports[partner]}/3)")
+                bot.send(sender, f"Laporan ({bot.reports[partner]}/3)")
         else:
             bot.send(sender, "Tidak ada partner.")
     
     elif cmd == '/info':
+        users = bot.db.c.execute('SELECT * FROM users').fetchall()
+        bot.send(sender, f"""INFO BOT
+Users: {len(users)}
+Active: {len(bot.chats)}
+Waiting: {len(bot.waiting)}
+Status: ONLINE""")
+    
+    else:
+        if uid in bot.chats:
+            partner = bot.chats[uid]
+            if isinstance(partner, str) and not partner.startswith('@'):
+                pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
+                if pname:
+                    bot.send(pname[0], f"{sender}: {text}")
+            else:
+                bot.send(partner, f"{sender}: {text}")
+        else:
+            bot.send(sender, "Tidak ada partner. /search")
+
+# ==================== MAIN ====================
+def main():
+    bot = Bot()
+    if not bot.login():
+        print("Login gagal!")
+        return
+    
+    print(f"Bot running as @{CONFIG['username']}")
+    print("="*50)
+    print(menu())
+    print("="*50)
+    
+    while True:
+        try:
+            msgs = bot.get_inbox()
+            for msg in msgs:
+                if msg['sender'] == CONFIG['username']:
+                    continue
+                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
+                handle(bot, msg['sender'], uid, msg['text'])
+                time.sleep(random.uniform(1, 3))
+            time.sleep(random.uniform(3, 7))
+        except KeyboardInterrupt:
+            print("\nStopped")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(10)
+
+if __name__ == "__main__":
+    main()lif cmd == '/info':
         users = bot.db.c.execute('SELECT * FROM users').fetchall()
         info = f"""INFO BOT
 Owner: RAJU
