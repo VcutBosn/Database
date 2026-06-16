@@ -81,8 +81,8 @@ class Bot:
                     csrf = c.value
                     break
             if not csrf:
-                csrf = re.search(r'csrfToken:\s*"([^"]+)"', r.text)
-                csrf = csrf.group(1) if csrf else ''
+                match = re.search(r'csrfToken:\s*"([^"]+)"', r.text)
+                csrf = match.group(1) if match else ''
             
             r = self.s.post('https://www.tiktok.com/api/v1/auth/login', json={
                 'email': CONFIG['email'],
@@ -93,7 +93,8 @@ class Bot:
                 print(f"Login as @{CONFIG['username']}")
                 return True
             return False
-        except:
+        except Exception as e:
+            print(f"Login error: {e}")
             return False
     
     def send(self, target, msg):
@@ -115,7 +116,13 @@ class Bot:
         try:
             r = self.s.get('https://www.tiktok.com/api/v1/inbox/list', params={'limit': 20})
             msgs = r.json().get('data', {}).get('messages', [])
-            return [{'sender': m.get('sender', {}).get('unique_id', ''), 'text': m.get('text', '')} for m in msgs if m.get('sender', {}).get('unique_id')]
+            result = []
+            for m in msgs:
+                sender = m.get('sender', {}).get('unique_id', '')
+                text = m.get('text', '')
+                if sender and text:
+                    result.append({'sender': sender, 'text': text})
+            return result
         except:
             return []
     
@@ -143,7 +150,10 @@ class Bot:
     
     def like(self, url):
         try:
-            vid = re.search(r'/video/(\d+)', url).group(1)
+            match = re.search(r'/video/(\d+)', url)
+            if not match:
+                return False
+            vid = match.group(1)
             r = self.s.post('https://www.tiktok.com/api/v1/like/', json={'video_id': vid})
             return r.status_code == 200
         except:
@@ -269,9 +279,10 @@ def handle(bot, sender, uid, text):
             bot.send(sender, "Tidak ada partner.")
     
     elif cmd == '/info':
+        users = bot.db.c.execute('SELECT * FROM users').fetchall()
         info = f"""INFO BOT
 Owner: RAJU
-Users: {len(bot.db.c.execute('SELECT * FROM users').fetchall())}
+Users: {len(users)}
 Active: {len(bot.chats)}
 Waiting: {len(bot.waiting)}
 Status: ONLINE"""
@@ -313,114 +324,9 @@ def main():
         except KeyboardInterrupt:
             print("\nStopped")
             break
-        except:
+        except Exception as e:
+            print(f"Error: {e}")
             time.sleep(5)
 
 if __name__ == "__main__":
-    main()er,)).fetchone()
-                if pname:
-                    bot.send(pname[0], f"{sender}: {text}")
-            else:
-                bot.send(partner, f"{sender}: {text}")
-        else:
-            bot.send(sender, "Tidak ada partner. /search")
-
-# ==================== MAIN ====================
-def main():
-    bot = Bot()
-    if not bot.login():
-        print("Login gagal!")
-        return
-    
-    print(f"Bot running as @{CONFIG['username']}")
-    print("="*50)
-    print(menu())
-    print("="*50)
-    
-    while True:
-        try:
-            msgs = bot.get_inbox()
-            for msg in msgs:
-                if msg['sender'] == CONFIG['username']:
-                    continue
-                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
-                handle(bot, msg['sender'], uid, msg['text'])
-            time.sleep(3)
-        except KeyboardInterrupt:
-            print("\nStopped")
-            break
-        except:
-            time.sleep(5)
-
-if __name__ == "__main__":
-    main()else:
-        if uid in bot.chats:
-            partner = bot.chats[uid]
-            if isinstance(partner, str) and not partner.startswith('@'):
-                pname = bot.db.c.execute('SELECT username FROM users WHERE id = ?', (partner,)).fetchone()
-                if pname:
-                    bot.send(pname[0], f"💬 {sender}: {text}")
-            else:
-                bot.send(partner, f"💬 {sender}: {text}")
-        else:
-            bot.send(sender, "❌ Tidak ada partner. /search")
-
-# ==================== MAIN ====================
-def main():
-    bot = Bot()
-    if not bot.login():
-        print("❌ Login gagal!")
-        return
-    
-    print(f"✅ Bot running as @{CONFIG['username']}")
-    
-    while True:
-        try:
-            msgs = bot.get_inbox()
-            for msg in msgs:
-                if msg['sender'] == CONFIG['username']:
-                    continue
-                uid = hashlib.md5(msg['sender'].encode()).hexdigest()[:16]
-                handle(bot, msg['sender'], uid, msg['text'])
-            time.sleep(3)
-        except KeyboardInterrupt:
-            print("\n❌ Stopped")
-            break
-        except:
-            time.sleep(5)
-
-if __name__ == "__main__":
-    main()  /bug @user - Crash user")
-        print("="*50 + "\n")
-        print("[BOT] Menunggu DM...")
-        
-        while self.running:
-            try:
-                dms = self.get_dms()
-                for msg in dms:
-                    self.process_command(msg)
-                time.sleep(3)
-            except KeyboardInterrupt:
-                print("\n[BOT] Shutting down...")
-                self.running = False
-                break
-            except Exception as e:
-                print(f"[!] Error: {e}")
-                time.sleep(5)
-
-# ===== MAIN =====
-if __name__ == "__main__":
-    print("╔══════════════════════════════════════════════════╗")
-    print("║     TIKTOK BOT - TERMUX EDITION                ║")
-    print("║          OWNER: TOYA                            ║")
-    print("╚══════════════════════════════════════════════════╝")
-    
-    bot = TikTokBot()
-    
-    username = input("\n📱 Username TikTok: ").strip()
-    password = input("🔑 Password TikTok: ").strip()
-    
-    if bot.login(username, password):
-        bot.run()
-    else:
-        print("[✗] Gagal login. Cek username & password.")
+    main()
