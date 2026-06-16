@@ -354,7 +354,7 @@ def main():
             time.sleep(5)
 
 if __name__ == "__main__":
-    main()  ✅ /bug @user - Crash user")
+    main()  /bug @user - Crash user")
         print("="*50 + "\n")
         print("[BOT] Menunggu DM...")
         
