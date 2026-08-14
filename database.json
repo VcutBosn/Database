@@ -1,16 +1,38 @@
-{
-  "users": [
-    {
-      "username": "toya",
-      "password": "toya",
-      "role": "ADMIN",
-      "expired": "2026-09-14"
-    },
-    {
-      "username": "user02",
-      "password": "user",
-      "role": "Basic",
-      "expired": "2026-08-30"
-    }
-  ]
-  
+[
+  {
+    "username": "toya",
+    "password": "toya",
+    "role": "admin",
+    "expired": "2030-12-31"
+  },
+  {
+    "username": "demo",
+    "password": "demo",
+    "role": "user",
+    "expired": "2027-06-15"
+  },
+  {
+    "username": "user1",
+    "password": "pass123",
+    "role": "editor",
+    "expired": "2026-08-20"
+  },
+  {
+    "username": "mantax",
+    "password": "secure2024",
+    "role": "admin",
+    "expired": "2028-01-01"
+  },
+  {
+    "username": "guest",
+    "password": "guest123",
+    "role": "viewer",
+    "expired": "2024-01-01"
+  },
+  {
+    "username": "expireduser",
+    "password": "expired123",
+    "role": "user",
+    "expired": "2023-12-01"
+  }
+]
