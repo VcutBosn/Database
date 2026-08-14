@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "username": "toya",
+      "password": "toya",
+      "role": "ADMIN",
+      "expired": "2026-09-14"
+    },
+    {
+      "username": "user02",
+      "password": "user",
+      "role": "Basic",
+      "expired": "2026-08-30"
+    }
+  ]
+  
