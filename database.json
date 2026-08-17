@@ -1,6 +1,16 @@
 {
   "users": [
-    { "username": "toya", "password": "123", "role": "admin", "expired": "2030-12-31" },
-    { "username": "user2", "password": "password2", "role": "user", "expired": "2025-06-30" }
+    {
+      "id": "USR-0001",
+      "username": "admin",
+      "password_hash": "...",
+      "role": "admin",
+      "key": "admin001",
+      "status": "active",
+      "expired_date": "2027-01-01",
+      "created_at": "2026-08-17T00:00:00Z",
+      "last_login": null,
+      "device_id": null
+    }
   ]
 }
