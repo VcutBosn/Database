@@ -3,7 +3,7 @@
     {
       "id": "USR-0001",
       "username": "admin",
-      "password_hash": "...",
+      "password_hash": "admin001",
       "role": "admin",
       "key": "admin001",
       "status": "active",
